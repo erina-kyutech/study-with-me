@@ -34,7 +34,7 @@
     breakCountdown: document.getElementById('break-countdown'),
     speechBubble: document.getElementById('speech-bubble'),
     speechText: document.getElementById('speech-text'),
-    charCanvas: document.getElementById('char-canvas'),
+    charSprite: document.getElementById('char-sprite'),
   };
 
   const START_MESSAGES = [
@@ -75,10 +75,13 @@
     els.pauseBtn.textContent = '一時停止';
   }
 
+  let studyStartedAt = null;
+
   function goToStudy() {
     els.homeScreen.hidden = true;
     els.studyScreen.hidden = false;
     Character.setMode('study');
+    studyStartedAt = new Date();
     timer.start();
     showSpeech(START_MESSAGES[Math.floor(Math.random() * START_MESSAGES.length)]);
   }
@@ -94,7 +97,7 @@
       showSpeech('再開だ、がんばろう！', 2200);
     } else {
       timer.pause();
-      Character.setMode('paused');
+      Character.setMode('rest');
       els.room.classList.add('is-paused');
       els.pauseBtn.textContent = '再開する';
       showSpeech('少し休憩中…', 2200);
@@ -108,12 +111,18 @@
     );
     if (!ok) return;
     timer.stop();
+    const endedAt = new Date();
+    if (studyStartedAt) {
+      Auth.recordSession(studyStartedAt, endedAt, Math.round(elapsedMs / 1000));
+    }
+    studyStartedAt = null;
     showSpeech('おつかれさま！よくがんばったね', 3000);
     goToHome();
   });
 
   // --- init ---
-  Character.init(els.charCanvas);
+  Character.init(els.charSprite);
   Room.init(els.room);
   goToHome();
+  Auth.init();
 })();

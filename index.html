@@ -13,113 +13,105 @@
 
 <div id="app" class="app">
 
-  <!-- 部屋（背景）：ホーム画面・勉強中画面で共通 -->
+  <!-- ログイン画面：DB接続時のみ表示。ゲストは押さずにそのまま遊べる -->
+  <section id="auth-screen" class="screen auth-screen" hidden>
+    <div class="auth-panel">
+      <h1 class="auth-title">Study With Me</h1>
+      <p class="auth-sub">ログインすると勉強時間を記録できます</p>
+      <form id="auth-form">
+        <label class="auth-label">メールアドレス
+          <input id="auth-email" type="email" required autocomplete="email">
+        </label>
+        <label class="auth-label">パスワード
+          <input id="auth-password" type="password" required minlength="8" autocomplete="current-password">
+        </label>
+        <p id="auth-error" class="auth-error" hidden></p>
+        <button type="submit" id="auth-submit" class="start-btn auth-submit">ログイン</button>
+      </form>
+      <p class="auth-toggle">
+        <span id="auth-toggle-text">アカウントがない場合は</span>
+        <button type="button" id="auth-toggle-btn" class="auth-link">新規登録</button>
+      </p>
+      <button type="button" id="auth-guest-btn" class="auth-link auth-guest">ログインせずに使う</button>
+    </div>
+  </section>
+
+  <!-- 部屋：Background → Furniture → Character → Foreground → UI の
+       レイヤー構造。キャラクターは背景に描き込まず、独立したレイヤーとして
+       重ねる（将来キャラクター/部屋/家具を個別に差し替えられるようにするため）。 -->
   <div id="room" class="room">
-    <div class="stars"></div>
-    <div class="window">
-      <div class="sky"></div>
-      <div class="city"></div>
-      <div class="window-frame"></div>
-    </div>
-    <div class="wall-deco poster1"></div>
-    <div class="wall-deco poster2"></div>
+    <!-- Background: 時間帯に応じて assets/backgrounds/ の実画像を切り替え -->
+    <div class="layer-background"></div>
 
-    <div class="shelf">
-      <div class="shelf-row">
-        <span class="book" style="--c:#c97b63"></span>
-        <span class="book" style="--c:#7d9d8f"></span>
-        <span class="book" style="--c:#d4a54a"></span>
-        <span class="book" style="--c:#8a7ba0"></span>
-        <span class="book" style="--c:#a3634c"></span>
-      </div>
-      <div class="shelf-row">
-        <span class="box"></span>
-        <span class="book tall" style="--c:#7d9d8f"></span>
-        <span class="book" style="--c:#c97b63"></span>
-        <span class="jar"></span>
-      </div>
+    <!-- Furniture: 現状は背景画像に含まれる。将来、机/棚/植物などを
+         個別スプライトとして差し替えたくなったらここに配置する -->
+    <div class="layer-furniture"></div>
+
+    <!-- Character: assets/characters/<charId>/<state>/frame_N.png を
+         character.js が差し替えるSprite Animation -->
+    <div class="layer-character">
+      <img id="char-sprite" class="char-sprite" src="assets/characters/girl01/idle/frame_1.png" alt="女の子">
     </div>
 
-    <div class="clock">
-      <div class="clock-face">
-        <div class="hand hour"></div>
-        <div class="hand minute"></div>
-      </div>
-    </div>
+    <!-- Foreground: 手前に置く小物などがあればここに配置（現状未使用） -->
+    <div class="layer-foreground"></div>
 
-    <div class="plant plant-tall">
-      <div class="pot"></div>
-      <div class="leaves">
-        <span></span><span></span><span></span><span></span>
-      </div>
-    </div>
-
-    <div class="rug"></div>
-
-    <div class="desk-scene">
-      <div class="lamp">
-        <div class="lamp-arm"></div>
-        <div class="lamp-head"></div>
-        <div class="lamp-glow"></div>
+    <!-- UI: キャラクターの座る机の上には被せず、床側の帯に配置する -->
+    <div class="layer-ui">
+      <!-- 吹き出し -->
+      <div id="speech-bubble" class="speech-bubble" hidden>
+        <p id="speech-text"></p>
       </div>
 
-      <canvas id="char-canvas" class="char-canvas" width="34" height="36"></canvas>
-
-      <div class="desk">
-        <div class="desk-top"></div>
-        <div class="mug"></div>
-        <div class="notebook"></div>
-        <div class="deskclock">10:30</div>
-      </div>
-
-      <div class="plant small-plant">
-        <div class="pot small"></div>
-        <div class="leaves small">
-          <span></span><span></span><span></span>
-        </div>
-      </div>
-
-      <div class="bag"></div>
-    </div>
-
-    <!-- 吹き出し -->
-    <div id="speech-bubble" class="speech-bubble" hidden>
-      <p id="speech-text"></p>
-    </div>
-
-    <!-- ホーム画面 -->
-    <section id="home-screen" class="screen home-screen">
-      <div class="home-panel">
-        <button id="start-btn" class="start-btn">
-          <span class="play-icon">▶</span> 勉強を開始する
-        </button>
-        <p class="home-message">今日も一緒にがんばろう！</p>
-      </div>
-    </section>
-
-    <!-- 勉強中画面 -->
-    <section id="study-screen" class="screen study-screen" hidden>
-      <div class="hud hud-top">
-        <div class="timer-box">
-          <span class="timer-label">勉強中</span>
-          <span id="timer-display" class="timer-display">00:00:00</span>
-          <div class="goal-row">
-            <span class="goal-label">目標</span>
-            <div class="goal-bar"><div id="goal-fill" class="goal-fill"></div></div>
-            <span id="goal-text" class="goal-text">00:00 / 25:00</span>
+      <!-- ホーム画面 -->
+      <section id="home-screen" class="screen home-screen">
+        <div class="home-panel">
+          <button id="start-btn" class="start-btn">
+            <span class="play-icon">▶</span> 勉強を開始する
+          </button>
+          <p class="home-message">今日も一緒にがんばろう！</p>
+          <div id="user-bar" class="user-bar" hidden>
+            <span id="user-email" class="user-email"></span>
+            <button type="button" id="history-btn" class="auth-link">記録を見る</button>
+            <button type="button" id="logout-btn" class="auth-link">ログアウト</button>
           </div>
         </div>
-        <div class="break-box">
-          <span class="break-label">次の休憩まで</span>
-          <span id="break-countdown" class="break-countdown">25:00</span>
-        </div>
-      </div>
+      </section>
 
-      <div class="hud hud-bottom">
-        <button id="pause-btn" class="ctrl-btn">一時停止</button>
-        <button id="end-btn" class="ctrl-btn ctrl-btn-end">終了</button>
-      </div>
-    </section>
+      <!-- 記録画面 -->
+      <section id="history-screen" class="screen auth-screen" hidden>
+        <div class="auth-panel history-panel">
+          <h1 class="auth-title">勉強の記録</h1>
+          <p id="history-total" class="auth-sub">合計 0分</p>
+          <ul id="history-list" class="history-list"></ul>
+          <button type="button" id="history-close-btn" class="start-btn auth-submit">とじる</button>
+        </div>
+      </section>
+
+      <!-- 勉強中画面 -->
+      <section id="study-screen" class="screen study-screen" hidden>
+        <div class="hud hud-top">
+          <div class="timer-box">
+            <span class="timer-label">勉強中</span>
+            <span id="timer-display" class="timer-display">00:00:00</span>
+            <div class="goal-row">
+              <span class="goal-label">目標</span>
+              <div class="goal-bar"><div id="goal-fill" class="goal-fill"></div></div>
+              <span id="goal-text" class="goal-text">00:00 / 25:00</span>
+            </div>
+          </div>
+          <div class="break-box">
+            <span class="break-label">次の休憩まで</span>
+            <span id="break-countdown" class="break-countdown">25:00</span>
+          </div>
+        </div>
+
+        <div class="hud hud-bottom">
+          <button id="pause-btn" class="ctrl-btn">一時停止</button>
+          <button id="end-btn" class="ctrl-btn ctrl-btn-end">終了</button>
+        </div>
+      </section>
+    </div>
   </div>
 
 </div>
@@ -127,6 +119,7 @@
 <script src="js/character.js"></script>
 <script src="js/room.js"></script>
 <script src="js/timer.js"></script>
+<script src="js/auth.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

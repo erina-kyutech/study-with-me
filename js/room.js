@@ -20,31 +20,10 @@ const Room = (() => {
     el.classList.add(cls);
   }
 
-  function updateClockHands() {
-    const now = new Date();
-    const hourEl = document.querySelector('.hand.hour');
-    const minuteEl = document.querySelector('.hand.minute');
-    const h = now.getHours() % 12;
-    const m = now.getMinutes();
-    if (hourEl) hourEl.style.transform = `rotate(${h * 30 + m * 0.5}deg)`;
-    if (minuteEl) minuteEl.style.transform = `rotate(${m * 6}deg)`;
-
-    const deskClockEl = document.querySelector('.deskclock');
-    if (deskClockEl) {
-      const hh = String(now.getHours()).padStart(2, '0');
-      const mm = String(now.getMinutes()).padStart(2, '0');
-      deskClockEl.textContent = `${hh}:${mm}`;
-    }
-  }
-
   function init(roomEl) {
     el = roomEl;
     apply();
-    updateClockHands();
-    setInterval(() => {
-      apply();
-      updateClockHands();
-    }, 30 * 1000);
+    setInterval(apply, 30 * 1000);
   }
 
   return { init };

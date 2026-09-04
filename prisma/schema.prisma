@@ -1,0 +1,38 @@
+// Prisma schema for Study With Me
+// 本番は PostgreSQL(Neon)。drink-quest と同じ構成。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Neonのプーラー経由(アプリの通常アクセス用)
+  directUrl = env("DIRECT_URL") // Neonの直接接続(マイグレーション用)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String   @default("がんばりやさん")
+  createdAt    DateTime @default(now())
+
+  sessions StudySession[]
+
+  @@map("users")
+}
+
+model StudySession {
+  id          String   @id @default(cuid())
+  userId      String
+  startedAt   DateTime
+  endedAt     DateTime
+  durationSec Int
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@map("study_sessions")
+}

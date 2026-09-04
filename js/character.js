@@ -1,239 +1,206 @@
 /* ============================================================
    character.js
-   ドット絵風の女の子キャラクターを <canvas> にプロシージャル描画し、
-   状態（IDLE / STUDY）に応じて自然なアニメーションを行う。
+   画像アセット(assets/characters/<charId>/<state>/frame_N.png)を
+   差し替えて再生する Sprite Animation エンジン。
 
-   実際のピクセル画像(PNG/スプライトシート)を使わず、小さな
-   グリッド(34x36)に対して図形描画APIで毎フレーム再描画する方式。
-   image-rendering: pixelated と組み合わせることでドット絵に見える。
+   プロシージャル描画(Canvas図形描画/CSS簡易パーツ/SVG合成)は一切使用しない。
+   キャラクターを差し替えるだけで別キャラに対応できるよう、
+   キャラクターIDを引数化している。
 
-   STEP3 以降で PAGE_TURN / DRINK / THINK / STRETCH / WATCH_CLOCK /
-   YAWN などの行動を追加する際は、ACTIONS registry と drawExtra() の
-   拡張ポイントを使う想定。今回(STEP1-2)は IDLE / STUDY のみ実装。
+   状態:
+     IDLE        待機（ホーム画面）
+     STUDY       勉強のベースポーズ（ペンを動かす）
+     PAGE_TURN   ページをめくる
+     DRINK       飲み物を飲む
+     THINK       考える
+     STRETCH     伸びをする
+     YAWN        あくび・眠い
+     LOOK_CLOCK  時計を見る
+     LAPTOP      PCを見る
+     REST        休憩する（一時停止中）
+
+   勉強セッション中は STUDY を基本状態とし、ランダムな間隔で
+   PAGE_TURN/DRINK/THINK/STRETCH/YAWN/LOOK_CLOCK/LAPTOP のいずれかへ
+   一時的に遷移してからSTUDYへ戻る、を繰り返す（同じ行動が連続しない
+   よう直前の行動は除外して抽選する）。
    ============================================================ */
 
 const Character = (() => {
-  const GRID_W = 34;
-  const GRID_H = 36;
+  const CHAR_ID = 'girl01';
 
-  const PALETTE = {
-    hairDark:  '#5a4030',
-    hairMid:   '#6b4a3a',
-    hairLight: '#8a6248',
-    skin:      '#f4c9a8',
-    skinShade: '#e0ab84',
-    blush:     'rgba(232,140,140,0.55)',
-    eye:       '#2b1c14',
-    eyeShine:  '#fdf6ee',
-    sweater:   '#f0e6d2',
-    sweaterSh: '#dccdae',
-    ink:       '#4a3528',
-    penBody:   '#7d8ba0',
+  // 状態ごとのフレーム枚数
+  const FRAME_COUNTS = {
+    idle: 4,
+    study: 7,
+    'page-turn': 5,
+    drink: 5,
+    think: 6,
+    stretch: 3,
+    yawn: 4,
+    laptop: 4,
+    'look-clock': 3,
+    rest: 4,
   };
 
-  let canvas, ctx;
-  let mode = 'idle';       // 'idle' | 'study' | 'paused'
-  let rafId = null;
-  let startTime = performance.now();
+  // 勉強中にランダムで挟み込む行動と、その行動の継続時間・重み(出やすさ)
+  const RANDOM_ACTIONS = [
+    { state: 'page-turn', minMs: 1600, maxMs: 2600, weight: 3 },
+    { state: 'drink', minMs: 2200, maxMs: 3800, weight: 2 },
+    { state: 'think', minMs: 2500, maxMs: 5000, weight: 3 },
+    { state: 'stretch', minMs: 2000, maxMs: 3000, weight: 1.4 },
+    { state: 'yawn', minMs: 2000, maxMs: 3400, weight: 1.2 },
+    { state: 'look-clock', minMs: 1500, maxMs: 2400, weight: 1.6 },
+    { state: 'laptop', minMs: 2500, maxMs: 4500, weight: 1.4 },
+  ];
 
-  // --- blink scheduling (real-time based, randomized) ---
-  let blinking = false;
-  let blinkUntil = 0;
-  let nextBlinkAt = 0;
+  const STUDY_MIN_MS = 30 * 1000;
+  const STUDY_MAX_MS = 120 * 1000;
 
-  function scheduleNextBlink(now) {
-    const gap = 2600 + Math.random() * 4200; // 2.6s〜6.8s
-    nextBlinkAt = now + gap;
+  function framePath(state, i) {
+    return `assets/characters/${CHAR_ID}/${state}/frame_${i + 1}.png`;
   }
 
-  // --- gentle idle pen-tap timer (home screen only) ---
-  let nextTapAt = 0;
-  let tapping = false;
-  let tapUntil = 0;
-
-  function scheduleNextTap(now) {
-    nextTapAt = now + 4000 + Math.random() * 5000;
-  }
-
-  /* ---------- low-level pixel helpers ---------- */
-
-  function px(x, y, w, h, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
-  }
-
-  // rasterized filled ellipse, row by row -> chunky pixel-art circles
-  function ellipse(cx, cy, rx, ry, color) {
-    ctx.fillStyle = color;
-    const yStart = Math.ceil(cy - ry);
-    const yEnd = Math.floor(cy + ry);
-    for (let y = yStart; y <= yEnd; y++) {
-      const dy = (y - cy) / ry;
-      const t = 1 - dy * dy;
-      if (t < 0) continue;
-      const halfW = rx * Math.sqrt(t);
-      const xStart = Math.round(cx - halfW);
-      const xEnd = Math.round(cx + halfW);
-      ctx.fillRect(xStart, y, xEnd - xStart + 1, 1);
-    }
-  }
-
-  /* ---------- drawing ---------- */
-
-  function draw(state) {
-    ctx.clearRect(0, 0, GRID_W, GRID_H);
-
-    const headTilt = state.headTilt || 0;    // -1..1 sway
-    const armBob = state.armBob || 0;        // 0..1 writing bob
-    const eyesClosed = state.eyesClosed;
-
-    ctx.save();
-    // 頭の左右わずかな揺れ (idle sway)。原点は首の付け根あたり。
-    ctx.translate(17, 19);
-    ctx.rotate(headTilt * 0.035);
-    ctx.translate(-17, -19);
-
-    // --- 後ろ髪 ---
-    ellipse(17, 14.5, 10.5, 12.5, PALETTE.hairDark);
-    px(6.5, 15, 21, 9, PALETTE.hairDark);
-
-    // --- 顔（肌） ---
-    ellipse(17, 13, 7.8, 8.3, PALETTE.skin);
-
-    // --- 前髪（上部） ---
-    ellipse(17, 6.8, 8.3, 3.9, PALETTE.hairMid);
-    // サイドの髪（顔の両脇を額から肩まで） ---
-    px(8.2, 8, 3.4, 12, PALETTE.hairMid);
-    px(22.4, 8, 3.4, 12, PALETTE.hairMid);
-    px(8.2, 8, 1.2, 12, PALETTE.hairLight);
-
-    // --- お団子ヘア ---
-    ellipse(17, 3.4, 4.3, 3.3, PALETTE.hairMid);
-    ellipse(15.3, 2.2, 1.5, 1.1, PALETTE.hairLight);
-
-    // --- 目 ---
-    if (eyesClosed) {
-      px(13, 14, 2.4, 1, PALETTE.eye);
-      px(18.6, 14, 2.4, 1, PALETTE.eye);
-    } else {
-      px(13, 12.4, 2.2, 3, PALETTE.eye);
-      px(18.6, 12.4, 2.2, 3, PALETTE.eye);
-      px(13.1, 12.6, 0.8, 0.8, PALETTE.eyeShine);
-      px(18.7, 12.6, 0.8, 0.8, PALETTE.eyeShine);
-    }
-
-    // --- ほお ---
-    ellipse(11.6, 15.6, 1.5, 1, PALETTE.blush);
-    ellipse(22.4, 15.6, 1.5, 1, PALETTE.blush);
-
-    // --- 口 ---
-    if (state.mouthOpen) {
-      ellipse(17, 17.3, 1.1, 1.1, PALETTE.eye);
-    } else {
-      px(16, 17, 2, 0.8, PALETTE.ink);
-    }
-
-    // --- 首 ---
-    px(14.2, 18.2, 5.6, 3, PALETTE.skinShade);
-
-    ctx.restore(); // 頭の傾き終わり（体は傾けない）
-
-    // --- 体（セーター） ---
-    // 注意: 楕円の上端が首より上（あご・口）にかかると顔が隠れてしまうため、
-    // 中心(cy)と半径(ry)は「首の付け根(y≈21)より下」から始まるように調整すること。
-    ellipse(17, 24, 13, 5, PALETTE.sweater);
-    px(3.6, 24, 26.8, 11, PALETTE.sweater);
-    px(3.6, 32, 26.8, 3, PALETTE.sweaterSh);
-    // 襟
-    px(14.6, 19.6, 5, 2.2, PALETTE.cream || '#fbf6ec');
-    px(15.2, 19.8, 3.6, 1.6, '#fbf6ec');
-
-    // --- 腕・手（勉強中の書く動き） ---
-    const bob = Math.sin(armBob * Math.PI * 2) * 0.9;
-
-    // 左腕（ノートを押さえる）
-    px(6, 24, 4, 3, PALETTE.sweater);
-    px(7, 27, 4, 3, PALETTE.sweater);
-    px(8, 30, 4.5, 2.6, PALETTE.skin);
-
-    // 右腕（ペンを持つ・上下に動く）
-    px(24, 24, 4, 3, PALETTE.sweater);
-    px(23, 27, 4, 3 + bob * 0.4, PALETTE.sweater);
-    px(21.5, 30 + bob, 4.5, 2.6, PALETTE.skin);
-
-    // ペン
-    ctx.save();
-    ctx.translate(23.5, 31.2 + bob);
-    ctx.rotate(-0.5 + bob * 0.15);
-    px(0, 0, 4.5, 1.1, PALETTE.penBody);
-    px(4.2, -0.1, 1, 1.3, PALETTE.ink);
-    ctx.restore();
-
-    // --- あくびの手（口を隠す）は STEP3 で追加予定 ---
-  }
-
-  /* ---------- animation loop ---------- */
-
-  function tick(now) {
-    const t = (now - startTime) / 1000; // seconds
-
-    // blink scheduling
-    if (!blinking && now >= nextBlinkAt) {
-      blinking = true;
-      blinkUntil = now + 130 + Math.random() * 60;
-    } else if (blinking && now >= blinkUntil) {
-      blinking = false;
-      scheduleNextBlink(now);
-    }
-
-    // idle pen tap scheduling (home screen flavor motion)
-    if (mode === 'idle') {
-      if (!tapping && now >= nextTapAt) {
-        tapping = true;
-        tapUntil = now + 900;
-      } else if (tapping && now >= tapUntil) {
-        tapping = false;
-        scheduleNextTap(now);
+  const preloaded = [];
+  function preloadAll() {
+    Object.entries(FRAME_COUNTS).forEach(([state, count]) => {
+      for (let i = 0; i < count; i++) {
+        const img = new Image();
+        img.src = framePath(state, i);
+        preloaded.push(img);
       }
-    }
-
-    const headTilt = Math.sin(t * 0.35) * 0.6 + Math.sin(t * 0.9) * 0.15;
-
-    let armBob = 0;
-    if (mode === 'study') {
-      // 執筆の周期モーション。時々ふっと止まる「間」を作って機械的にならないようにする
-      const pausePhase = Math.sin(t * 0.12);
-      const writing = pausePhase > -0.55; // たまに小休止
-      armBob = writing ? (t * 1.7) % 1 : 0.0;
-    } else if (mode === 'idle' && tapping) {
-      armBob = (t * 3) % 1;
-    }
-
-    draw({
-      headTilt,
-      armBob,
-      eyesClosed: blinking,
-      mouthOpen: false,
     });
+  }
 
-    rafId = requestAnimationFrame(tick);
+  let imgEl;
+  let mode = 'idle'; // 'idle' | 'study' | 'rest'
+  let frameIndex = 0;
+  let timerId = null;
+  let lastRandomAction = null;
+
+  function setFrame(state, i) {
+    imgEl.src = framePath(state, i);
+  }
+
+  function clearTimer() {
+    if (timerId) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+  }
+
+  function randRange(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function pickWeighted(items) {
+    const total = items.reduce((s, it) => s + it.weight, 0);
+    let r = Math.random() * total;
+    for (const it of items) {
+      r -= it.weight;
+      if (r <= 0) return it;
+    }
+    return items[items.length - 1];
+  }
+
+  // --- IDLE（ホーム画面）: ランダムな間隔でポーズを変える ---
+  function runIdleLoop() {
+    clearTimer();
+    const count = FRAME_COUNTS.idle;
+    let next = Math.floor(Math.random() * count);
+    if (next === frameIndex) next = (next + 1) % count;
+    frameIndex = next;
+    setFrame('idle', frameIndex);
+
+    timerId = setTimeout(() => {
+      if (mode === 'idle') runIdleLoop();
+    }, 1800 + Math.random() * 2200);
+  }
+
+  // --- STUDY（勉強中の基本ポーズ）: 書き続けるフレームをテンポよくループ ---
+  function runStudyPoseLoop(untilAt) {
+    clearTimer();
+    frameIndex = (frameIndex + 1) % FRAME_COUNTS.study;
+    setFrame('study', frameIndex);
+
+    const now = Date.now();
+    if (now >= untilAt) {
+      runRandomAction();
+      return;
+    }
+    const pause = Math.random() < 0.12;
+    const delay = pause ? 900 + Math.random() * 500 : 380 + Math.random() * 320;
+    timerId = setTimeout(() => {
+      if (mode === 'study') runStudyPoseLoop(untilAt);
+    }, Math.min(delay, untilAt - now));
+  }
+
+  // STUDYの合間に挟むランダム行動（PAGE_TURN/DRINK/THINK/STRETCH/YAWN/LOOK_CLOCK/LAPTOP）
+  function runRandomAction() {
+    clearTimer();
+    const candidates = RANDOM_ACTIONS.filter((a) => a.state !== lastRandomAction);
+    const action = pickWeighted(candidates.length ? candidates : RANDOM_ACTIONS);
+    lastRandomAction = action.state;
+
+    const duration = randRange(action.minMs, action.maxMs);
+    const endAt = Date.now() + duration;
+    frameIndex = 0;
+    playActionFrames(action.state, endAt, () => {
+      if (mode === 'study') startStudyPose();
+    });
+  }
+
+  function playActionFrames(state, endAt, onDone) {
+    const count = FRAME_COUNTS[state];
+    setFrame(state, frameIndex % count);
+    frameIndex++;
+
+    const now = Date.now();
+    if (now >= endAt) {
+      onDone();
+      return;
+    }
+    const frameDelay = 420 + Math.random() * 260;
+    timerId = setTimeout(() => {
+      if (mode === 'study') playActionFrames(state, endAt, onDone);
+    }, Math.min(frameDelay, endAt - now));
+  }
+
+  function startStudyPose() {
+    const untilAt = Date.now() + randRange(STUDY_MIN_MS, STUDY_MAX_MS);
+    frameIndex = 0;
+    runStudyPoseLoop(untilAt);
+  }
+
+  // --- REST（一時停止）: 休憩フレームをゆったりループ ---
+  function runRestLoop() {
+    clearTimer();
+    frameIndex = (frameIndex + 1) % FRAME_COUNTS.rest;
+    setFrame('rest', frameIndex);
+    timerId = setTimeout(() => {
+      if (mode === 'rest') runRestLoop();
+    }, 1600 + Math.random() * 1200);
+  }
+
+  function startLoopForMode() {
+    frameIndex = 0;
+    lastRandomAction = null;
+    if (mode === 'study') startStudyPose();
+    else if (mode === 'rest') runRestLoop();
+    else runIdleLoop();
   }
 
   /* ---------- public API ---------- */
 
-  function init(canvasEl) {
-    canvas = canvasEl;
-    ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-    const now = performance.now();
-    scheduleNextBlink(now);
-    scheduleNextTap(now);
-    startTime = now;
-    if (!rafId) rafId = requestAnimationFrame(tick);
+  function init(imageEl) {
+    imgEl = imageEl;
+    preloadAll();
+    startLoopForMode();
   }
 
   function setMode(newMode) {
+    if (mode === newMode) return;
     mode = newMode;
+    startLoopForMode();
   }
 
   return { init, setMode };
