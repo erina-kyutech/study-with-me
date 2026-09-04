@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study With Me</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app" class="app">
+
+  <!-- 部屋（背景）：ホーム画面・勉強中画面で共通 -->
+  <div id="room" class="room">
+    <div class="stars"></div>
+    <div class="window">
+      <div class="sky"></div>
+      <div class="city"></div>
+      <div class="window-frame"></div>
+    </div>
+    <div class="wall-deco poster1"></div>
+    <div class="wall-deco poster2"></div>
+
+    <div class="shelf">
+      <div class="shelf-row">
+        <span class="book" style="--c:#c97b63"></span>
+        <span class="book" style="--c:#7d9d8f"></span>
+        <span class="book" style="--c:#d4a54a"></span>
+        <span class="book" style="--c:#8a7ba0"></span>
+        <span class="book" style="--c:#a3634c"></span>
+      </div>
+      <div class="shelf-row">
+        <span class="box"></span>
+        <span class="book tall" style="--c:#7d9d8f"></span>
+        <span class="book" style="--c:#c97b63"></span>
+        <span class="jar"></span>
+      </div>
+    </div>
+
+    <div class="clock">
+      <div class="clock-face">
+        <div class="hand hour"></div>
+        <div class="hand minute"></div>
+      </div>
+    </div>
+
+    <div class="plant plant-tall">
+      <div class="pot"></div>
+      <div class="leaves">
+        <span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <div class="rug"></div>
+
+    <div class="desk-scene">
+      <div class="lamp">
+        <div class="lamp-arm"></div>
+        <div class="lamp-head"></div>
+        <div class="lamp-glow"></div>
+      </div>
+
+      <canvas id="char-canvas" class="char-canvas" width="34" height="36"></canvas>
+
+      <div class="desk">
+        <div class="desk-top"></div>
+        <div class="mug"></div>
+        <div class="notebook"></div>
+        <div class="deskclock">10:30</div>
+      </div>
+
+      <div class="plant small-plant">
+        <div class="pot small"></div>
+        <div class="leaves small">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <div class="bag"></div>
+    </div>
+
+    <!-- 吹き出し -->
+    <div id="speech-bubble" class="speech-bubble" hidden>
+      <p id="speech-text"></p>
+    </div>
+
+    <!-- ホーム画面 -->
+    <section id="home-screen" class="screen home-screen">
+      <div class="home-panel">
+        <button id="start-btn" class="start-btn">
+          <span class="play-icon">▶</span> 勉強を開始する
+        </button>
+        <p class="home-message">今日も一緒にがんばろう！</p>
+      </div>
+    </section>
+
+    <!-- 勉強中画面 -->
+    <section id="study-screen" class="screen study-screen" hidden>
+      <div class="hud hud-top">
+        <div class="timer-box">
+          <span class="timer-label">勉強中</span>
+          <span id="timer-display" class="timer-display">00:00:00</span>
+          <div class="goal-row">
+            <span class="goal-label">目標</span>
+            <div class="goal-bar"><div id="goal-fill" class="goal-fill"></div></div>
+            <span id="goal-text" class="goal-text">00:00 / 25:00</span>
+          </div>
+        </div>
+        <div class="break-box">
+          <span class="break-label">次の休憩まで</span>
+          <span id="break-countdown" class="break-countdown">25:00</span>
+        </div>
+      </div>
+
+      <div class="hud hud-bottom">
+        <button id="pause-btn" class="ctrl-btn">一時停止</button>
+        <button id="end-btn" class="ctrl-btn ctrl-btn-end">終了</button>
+      </div>
+    </section>
+  </div>
+
+</div>
+
+<script src="js/character.js"></script>
+<script src="js/room.js"></script>
+<script src="js/timer.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
